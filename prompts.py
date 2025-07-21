@@ -1,6 +1,6 @@
 CLASSIFICATION_PROMPT = """This image is part of a set of engineering documents. Based on its contents, classify it as one of:
-- "map" if it is a Boring Location Map (shows locations or layout)
-- "table" if it is a Drill Log (shows tabular data about drilling)
+- "map" if it is a Boring Location Map, Excavation site plan (shows locations or layout), ignore other maps
+- "table" if it is a Drill Log (shows tabular data about drilling), ignore other tables
 - "neither" if it doesn't fit either category above
 
 Return just one word: "map", "table", or "neither"."""
