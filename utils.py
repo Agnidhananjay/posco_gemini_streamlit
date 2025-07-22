@@ -9,61 +9,61 @@ import time
 import json
 import asyncio
 from google.genai import types
-def classify_images(file_paths, prompt, client=None, api_key=None):
-    """
-    Classify images as either 'map', 'table', or 'neither' using Google Generative AI.
+# def classify_images(file_paths, prompt, client=None, api_key=None):
+#     """
+#     Classify images as either 'map', 'table', or 'neither' using Google Generative AI.
     
-    Args:
-        file_paths: List of file paths to images
-        prompt: Prompt text for classification
-        client: Optional Google GenAI client instance
-        api_key: Optional API key (if not provided, loads from .env file)
+#     Args:
+#         file_paths: List of file paths to images
+#         prompt: Prompt text for classification
+#         client: Optional Google GenAI client instance
+#         api_key: Optional API key (if not provided, loads from .env file)
         
-    Returns:
-        dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
-    """
+#     Returns:
+#         dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
+#     """
     
-    # Load environment variables from .env file
-    load_dotenv()
+#     # Load environment variables from .env file
+#     load_dotenv()
     
-    # Create client if not provided
-    if client is None:
-        if api_key is None:
-            api_key = os.getenv('GEMINI_API_KEY')
-            if api_key is None:
-                raise ValueError("GEMINI_API_KEY not found in environment variables or .env file")
+#     # Create client if not provided
+#     if client is None:
+#         if api_key is None:
+#             api_key = os.getenv('GEMINI_API_KEY')
+#             if api_key is None:
+#                 raise ValueError("GEMINI_API_KEY not found in environment variables or .env file")
         
-        client = genai.Client(api_key=api_key)
+#         client = genai.Client(api_key=api_key)
     
-    images = {"map": [], "table": [], "neither": []}
-    contents = [prompt]
-    table_found = False
+#     images = {"map": [], "table": [], "neither": []}
+#     contents = [prompt]
+#     table_found = False
 
-    for path in file_paths:
-        if table_found:
-            images["table"].append(path)
-            continue
+#     for path in file_paths:
+#         if table_found:
+#             images["table"].append(path)
+#             continue
 
-        # Open and process the image
-        image = PIL.Image.open(path)
-        contents_with_image = contents + [image]
+#         # Open and process the image
+#         image = PIL.Image.open(path)
+#         contents_with_image = contents + [image]
 
-        # Generate content using the model
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=contents_with_image
-        )
+#         # Generate content using the model
+#         response = client.models.generate_content(
+#             model="gemini-2.0-flash",
+#             contents=contents_with_image
+#         )
 
-        # Classify based on response text
-        if "map" in response.text.lower():
-            images["map"].append(path)
-        elif "table" in response.text.lower():
-            images["table"].append(path)
-            table_found = True
-        else:
-            images["neither"].append(path)
+#         # Classify based on response text
+#         if "map" in response.text.lower():
+#             images["map"].append(path)
+#         elif "table" in response.text.lower():
+#             images["table"].append(path)
+#             table_found = True
+#         else:
+#             images["neither"].append(path)
 
-    return images
+#     return images
 
 
 # Example usage:
@@ -85,6 +85,106 @@ def classify_images(file_paths, prompt, client=None, api_key=None):
 import os
 import fitz
 from concurrent.futures import ThreadPoolExecutor
+
+async def classify_images_async(file_paths, prompt, client=None, api_key=None, max_concurrent=6):
+    """
+    Classify images as either 'map', 'table', or 'neither' using Google Generative AI.
+    Processes images concurrently with up to 6 simultaneous API calls using semaphore.
+    
+    Args:
+        file_paths: List of file paths to images
+        prompt: Prompt text for classification
+        client: Optional Google GenAI client instance
+        api_key: Optional API key (if not provided, loads from .env file)
+        max_concurrent: Maximum number of concurrent API calls (default: 6)
+        
+    Returns:
+        dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
+    """
+    
+    # Load environment variables from .env file
+    load_dotenv()
+    
+    # Create client if not provided
+    if client is None:
+        if api_key is None:
+            api_key = os.getenv('GEMINI_API_KEY')
+            if api_key is None:
+                raise ValueError("GEMINI_API_KEY not found in environment variables or .env file")
+        
+        from google import genai
+        client = genai.Client(api_key=api_key)
+    
+    images = {"map": [], "table": [], "neither": []}
+    
+    async def classify_single_image(path, index, semaphore):
+        """Classify a single image asynchronously"""
+        async with semaphore:
+            try:
+                # Open and process the image
+                image = PIL.Image.open(path)
+                contents_with_image = [prompt, image]
+                
+                # Run API call in thread pool (since genai client is sync)
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=contents_with_image
+                    )
+                )
+                
+                # Classify based on response text
+                response_lower = response.text.lower()
+                if "map" in response_lower:
+                    return (path, 'map', index)
+                elif "table" in response_lower:
+                    return (path, 'table', index)
+                else:
+                    return (path, 'neither', index)
+                    
+            except Exception as e:
+                print(f"Error classifying {path}: {e}")
+                return (path, 'neither', index)
+    
+    # Create semaphore to limit concurrent requests
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    # Create tasks for all images
+    tasks = [
+        classify_single_image(path, i, semaphore) 
+        for i, path in enumerate(file_paths)
+    ]
+    
+    # Process all images concurrently
+    results = await asyncio.gather(*tasks)
+    
+    # Sort results by index to maintain original order
+    results.sort(key=lambda x: x[2])
+    
+    # Assign classifications
+    for path, classification, index in results:
+        images[classification].append(path)
+    
+    return images
+
+
+def classify_images(file_paths, prompt, client=None, api_key=None, max_concurrent=6):
+    """
+    Synchronous wrapper for classify_images_async.
+    
+    Args:
+        file_paths: List of file paths to images
+        prompt: Prompt text for classification
+        client: Optional Google GenAI client instance
+        api_key: Optional API key (if not provided, loads from .env file)
+        max_concurrent: Maximum number of concurrent API calls (default: 6)
+        
+    Returns:
+        dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
+    """
+    return asyncio.run(classify_images_async(file_paths, prompt, client, api_key, max_concurrent))
 
 def process_page(pdf_path, page_number, scale, base_name, output_dir):
     """Process a single page by opening the PDF in this thread for thread safety"""
@@ -188,7 +288,7 @@ async def process_engineering_images_fast(images, client, prompt_map, prompt_tab
             response = await loop.run_in_executor(
                 executor,
                 lambda: client.models.generate_content(
-                    model="gemini-2.5-flash-preview-05-20",
+                    model="gemini-2.5-flash",
                     contents=contents,
                     config={
                         'response_mime_type': 'application/json',
@@ -240,16 +340,21 @@ async def process_engineering_images_fast(images, client, prompt_map, prompt_tab
     table_results = await asyncio.gather(*table_tasks, return_exceptions=True)
     
     # Process map data (same logic as before)
-    map_data = []
+    from collections import OrderedDict
+
+    map_data = OrderedDict()
+
     for result in map_results:
-        if not isinstance(result, Exception):
-            map_data.append(result)
-    
-    merged_metadata = []
-    for entry in map_data:
-        merged_metadata.extend(entry.get('metadata', []))
-    map_data = sorted(merged_metadata, key=lambda x: x['Number'])
-    
+        if isinstance(result, Exception):
+            continue
+        for item in result.get("metadata", []):
+            name = item.get("Name")
+            if name:
+                map_data[name] = item  # Will overwrite duplicates with the latest one
+
+    # If needed as a list
+    map_data = list(map_data.values())
+    print(f"Map data extracted: {map_data}")
     # Process table data with merging logic
     table_data = []
     for result in table_results:
@@ -333,12 +438,17 @@ def merge_engineering_data(table_data, map_data):
     data_extracted = {}
     
     if len(map_data) > 0:
-        # If map data exists, zip with table data and use map Name as key
-        for a, b in zip(map_data, table_data):
-            b["map_data"] = a
-            data_extracted[a['Name']] = b
+        for b in table_data:
+            if b["metadata"]['HOLE_NO'] in [a['Name'] for a in map_data]:
+                a = next((x for x in map_data if x['Name'] == b["metadata"]['HOLE_NO']), None)
+                if a:
+                    b['map_data'] = {
+                        'Name': a['Name'],
+                        'Number': a['Number'],
+                        'Excavation_level': a['Excavation_level']
+                    }
+                    data_extracted[a['Name']] = b  # <-- move this inside
     else:
-        # If no map data, use table data with HOLE_NO as key
         for b in table_data:
             data_extracted[b["metadata"]['HOLE_NO']] = b
     

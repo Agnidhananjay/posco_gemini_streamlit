@@ -384,7 +384,6 @@ def main():
                     for idx, layer in enumerate(borehole_data.get('soil_data', [])):
                         with st.expander(f"Layer {idx + 1}: {layer.get('range', 'Unknown')}"):
                             col1, col2 = st.columns([3, 1])
-                            
                             with col1:
                                 st.write("**Observation:**", layer.get('observation', 'N/A'))
                                 st.write("**Soil Name:**", layer.get('soil_name', 'N/A'))

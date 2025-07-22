@@ -220,7 +220,6 @@ def main():
                             file_paths, CLASSIFICATION_PROMPT, client
                         )
                         st.session_state.classification_results = classified_images
-                        
                         progress_2.progress(100)
                         with col2:
                             st.success("✅ Complete")
