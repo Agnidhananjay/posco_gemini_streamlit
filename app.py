@@ -220,7 +220,6 @@ def main():
                             file_paths, CLASSIFICATION_PROMPT, client
                         )
                         st.session_state.classification_results = classified_images
-                        
                         progress_2.progress(100)
                         with col2:
                             st.success("✅ Complete")
@@ -260,7 +259,6 @@ def main():
                                 Extracted_data, 
                                 DEFAULT_CONFIG["max_concurrent"]
                             )
-                            
                             # Update progress to 100% after completion
                             progress_3.progress(100)
                             progress_text.text(f"Completed {total_api_calls} images!")
@@ -317,7 +315,7 @@ def main():
             final_data = st.session_state.processed_data
             
             # Create tabs for different views
-            tab1, tab2, tab3 = st.tabs(["📊 Summary", "🔍 Detailed View", "💾 Export"])
+            tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary", "🔍 Detailed View", "🗺️ Map Data", "💾 Export"])
             
             with tab1:
                 # Overall statistics
@@ -384,11 +382,11 @@ def main():
                     for idx, layer in enumerate(borehole_data.get('soil_data', [])):
                         with st.expander(f"Layer {idx + 1}: {layer.get('range', 'Unknown')}"):
                             col1, col2 = st.columns([3, 1])
+                            
                             with col1:
                                 st.write("**Observation:**", layer.get('observation', 'N/A'))
                                 st.write("**Soil Name:**", layer.get('soil_name', 'N/A'))
                                 st.write("**Soi Colour:**",layer.get('soil_color', 'N/A') )
-                            
                             with col2:
                                 st.metric("Samples", len(layer.get('sample_test', [])))
                             
@@ -398,6 +396,71 @@ def main():
                                 st.dataframe(layer['sample_test'], use_container_width=True)
             
             with tab3:
+                st.markdown("#### 🗺️ Boring Location Map Data")
+                
+                # Debug: Show what's in the data
+                with st.expander("🔍 Debug: Check Data Structure"):
+                    st.write("Sample of first borehole data:")
+                    first_key = list(final_data.keys())[0] if final_data else None
+                    if first_key:
+                        st.json(final_data[first_key])
+                
+                # Check if any borehole has map data
+                boreholes_with_maps = [bh_id for bh_id, bh_data in final_data.items() if 'map_data' in bh_data]
+                
+                st.write(f"Total boreholes with map data: {len(boreholes_with_maps)}")
+                
+                if boreholes_with_maps:
+                    # Create a consolidated map data view
+                    map_data_list = []
+                    for bh_id, bh_data in final_data.items():
+                        if 'map_data' in bh_data:
+                            map_info = bh_data['map_data']
+                            map_data_list.append({
+                                "Borehole ID": bh_id,
+                                "Name": map_info.get('Name', 'N/A'),
+                                "Number": map_info.get('Number', 'N/A'),
+                                "Excavation level": map_info.get('Excavation_level', 'N/A'),
+                            })
+                    
+                    # Display map data table
+                    st.dataframe(
+                        map_data_list,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
+                    # Show individual map data details
+                    st.markdown("##### Detailed Map Information")
+                    selected_map_borehole = st.selectbox(
+                        "Select Borehole for Map Details",
+                        options=boreholes_with_maps,
+                        format_func=lambda x: f"Borehole {x}",
+                        key="map_selector"
+                    )
+                    
+                    if selected_map_borehole:
+                        map_data = final_data[selected_map_borehole]['map_data']
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write("**Borehole Name:**", map_data.get('Name', 'N/A'))
+                            st.write("**Borehole Number:**", map_data.get('Number', 'N/A'))
+                            st.write("**Excavation level**", map_data.get('Excavation_level', 'N/A'))
+                        
+                        # Show full map data JSON
+                        with st.expander("View Complete Map Data JSON"):
+                            st.json(map_data)
+                else:
+                    st.info("ℹ️ No map data was extracted from the PDF. This typically happens when the PDF doesn't contain boring location maps or the maps couldn't be processed.")
+                    
+                    # Show what map images were found
+                    if hasattr(st.session_state, 'classification_results') and st.session_state.classification_results:
+                        st.write(f"Maps found during classification: {len(st.session_state.classification_results.get('map', []))}")
+                        if st.session_state.classification_results.get('map'):
+                            st.write("Map files:", st.session_state.classification_results['map'])
+            
+            with tab4:
                 col1, col2 = st.columns([1, 1])
                 
                 with col1:
