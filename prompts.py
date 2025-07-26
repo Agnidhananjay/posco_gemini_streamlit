@@ -1,6 +1,6 @@
 CLASSIFICATION_PROMPT = """This image is part of a set of engineering documents. Based on its contents, classify it as one of:
 - "map" if it is a Boring Location Map, Excavation site plan (shows locations or layout), ignore other maps
-- "table" if it is a Drill Log (shows tabular data about drilling)! **it must have the text "시 추 주 상 도" or "DRILL LOG" as heading**, ignore other tables
+- "table" if it is a Drill Log (shows tabular data about drilling)! **it must have the text "시 추 주 상 도" or "DRILL LOG" as heading and a table on it**, ignore other tables
 - "neither" if it doesn't fit either category above
 
 Return just one word: "map", "table", or "neither"."""
@@ -28,13 +28,18 @@ COLUMNS ON LEFT SIDE OF THE TABLE ARE ABOUT SOIL LAYERS AND THIER DEPTH, WHILE T
 ***IN SOIL DATA, the depth_range(range) is given in the form of "0.0~5.0m" or "8.3~10.0m", so you need to extract the start and end depth AND THEY MUST BE CONTINUOUS 
 ,if the first entry is 0.0~5.0m then second entry must start where the first one ended, like 5.0~10.0m or something,it cant be like "0.0~10.0m", "4.0~10.0m"  or "8.0~10.0m" in the JSON
 IN SHORT THERE SHOULD NOT BE A MISSING RANGE IN-BETWEEN***
-***IGNORE strikethrough LINES, BUT DO NOT IGNORE THE TEXT IN BRACKETS, THEY ARE IMPORTANT***
+***IGNORE strikethrough (HORIZONTAL LINES) IN OBSERVATION FIELD, BUT DO NOT IGNORE THE TEXT IN BRACKETS, THEY ARE IMPORTANT***
+Observation: * 실트질 점 토 실트질 점토로 구성. 부분적으로 패각 혼재. 매우연약(Very soft)보통견고(Medium stiff). 습윤(Moist). #15.516.3m:UD 채취.
 
+Soil Name: 실트질 점 토
+
+Soi Colour: 암회색
 ***# TCR and RQD are optional, as it may not be present in all samples, only present in core samples in the column "TCR%" and "RQD%" ONLY ON THE RIGHT SIDE OF THE TABLES. And for those samples Hits is None
 IF TCR PERCENTAGE AND RQD PERCENTAGE COLUMN IS EMPTY, IGNORE THAT SAMPLE***
 Now given an image with this table data your job is to return a json
 
 Please return Json only
+If the image does not contain any table data, return an empty json like this: {"metadata": {}, "sample_data": [], "soil_data": []}
 """
 
 PROMPT_MAP = """

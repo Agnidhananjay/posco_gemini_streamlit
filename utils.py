@@ -130,7 +130,7 @@ async def classify_images_async(file_paths, prompt, client=None, api_key=None, m
                 response = await loop.run_in_executor(
                     None,
                     lambda: client.models.generate_content(
-                        model="gemini-2.0-flash",
+                        model="gemini-2.5-flash",
                         contents=contents_with_image
                     )
                 )
@@ -349,7 +349,8 @@ async def process_engineering_images_fast(images, client, prompt_map, prompt_tab
             continue
         for item in result.get("metadata", []):
             name = item.get("Name")
-            if name:
+            number = item.get("Number")
+            if name and isinstance(number, int):
                 map_data[name] = item  # Will overwrite duplicates with the latest one
 
     # If needed as a list
@@ -453,6 +454,29 @@ def merge_engineering_data(table_data, map_data):
         except:
             return (None, None)
     
+    def remove_strikethrough(text):
+        """Remove strikethrough text from observations"""
+        if not text:
+            return text
+        
+        import re
+        
+        # Remove HTML strikethrough tags
+        text = re.sub(r'<strike>.*?</strike>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'<s>.*?</s>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'<del>.*?</del>', '', text, flags=re.IGNORECASE)
+        
+        # Remove markdown strikethrough (~~text~~)
+        text = re.sub(r'~~.*?~~', '', text)
+        
+        # Remove Unicode strikethrough characters (U+0336)
+        text = re.sub(r'[^\u0336]+\u0336', '', text)
+        
+        # Clean up extra spaces
+        text = ' '.join(text.split())
+        
+        return text.strip()
+    
     def merge_similar_layers(soil_layers):
         """Merge consecutive soil layers with same name and color"""
         if not soil_layers:
@@ -483,7 +507,9 @@ def merge_engineering_data(table_data, map_data):
             # Initialize merged layer
             merged_start = current['start']
             merged_end = current['end']
-            merged_observations = [current_layer.get('observation', '')]
+            # Clean observation before adding
+            cleaned_obs = remove_strikethrough(current_layer.get('observation', ''))
+            merged_observations = [cleaned_obs] if cleaned_obs else []
             
             # Look for consecutive layers with same name and color
             j = i + 1
@@ -501,9 +527,10 @@ def merge_engineering_data(table_data, map_data):
                 if same_name and same_color and is_consecutive:
                     # Merge this layer
                     merged_end = next_layer['end']
-                    obs = next_layer_data.get('observation', '')
-                    if obs and obs not in merged_observations:
-                        merged_observations.append(obs)
+                    # Clean observation before adding
+                    cleaned_obs = remove_strikethrough(next_layer_data.get('observation', ''))
+                    if cleaned_obs and cleaned_obs not in merged_observations:
+                        merged_observations.append(cleaned_obs)
                     j += 1
                 else:
                     break
@@ -513,8 +540,7 @@ def merge_engineering_data(table_data, map_data):
             merged_layer['range'] = f"{merged_start}~{merged_end}m"
             
             # Combine observations
-            filtered_observations = [obs for obs in merged_observations if obs]
-            merged_layer['observation'] = "; ".join(filtered_observations) if filtered_observations else ""
+            merged_layer['observation'] = "; ".join(merged_observations) if merged_observations else ""
             
             merged_layers.append(merged_layer)
             i = j
@@ -569,6 +595,11 @@ def merge_engineering_data(table_data, map_data):
     # Fix overlapping layers and merge similar layers in table_data before processing
     for table_entry in table_data:
         if 'soil_data' in table_entry:
+            # Clean strikethrough text from all observations first
+            for layer in table_entry['soil_data']:
+                if 'observation' in layer:
+                    layer['observation'] = remove_strikethrough(layer['observation'])
+            
             # First merge similar consecutive layers
             table_entry['soil_data'] = merge_similar_layers(table_entry['soil_data'])
             # Then remove overlapping layers
@@ -588,6 +619,9 @@ def merge_engineering_data(table_data, map_data):
                         'Elevation_level': a['Elevation_level']
                     }
                     data_extracted[a['Name']] = b
+            else:
+                for b in table_data:
+                    data_extracted[b["metadata"]['HOLE_NO']] = b
     else:
         for b in table_data:
             data_extracted[b["metadata"]['HOLE_NO']] = b
@@ -620,8 +654,6 @@ def merge_engineering_data(table_data, map_data):
 
                 # Iterate over sample data and check if depth falls within the range
                 for sample in bh_data['sample_data']:
-                    if sample["Hits"] in [None, 'Null', '']:
-                        sample["Hits"] = "None"  # Ensure Hits is not None
                     sample["Elevation_level"] = Elevation_level - sample['Depth'] if Elevation_level else None
                     if range_start < sample['Depth'] <= range_end:
                         sample_data_within_range.append(sample)
@@ -660,3 +692,64 @@ def merge_engineering_data(table_data, map_data):
 #     for soil_layer in data['soil_data']:
 #         print(f"Soil range: {soil_layer['range']}")
 #         print(f"Samples in range: {len(soil_layer['sample_test'])}")
+from ultralytics import YOLO
+
+def classify_images_yolo(file_paths, model_path, progress_callback=None):
+    """
+    Classify images using YOLO model optimized for Streamlit Cloud.
+    Processes one image at a time with 1080px size.
+    
+    Args:
+        file_paths: List of file paths to images
+        model_path: Path to trained YOLO model (.pt file)
+        progress_callback: Optional Streamlit progress bar object
+        
+    Returns:
+        dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
+    """
+    
+    # Load model once
+    model = YOLO(model_path)
+    model.to('cpu')
+    
+    # Initialize results dictionary
+    images = {"map": [], "table": [], "neither": []}
+    total_images = len(file_paths)
+    
+    # Process images one by one
+    for i, image_path in enumerate(file_paths):
+        try:
+            # Run prediction on single image
+            results = model(
+                image_path,
+                imgsz=1080,        # Image size as requested
+                device='cpu',      # Force CPU for Streamlit Cloud
+                verbose=False,     # Reduce console output
+                max_det=1,         # Only need top detection
+                conf=0.25          # Confidence threshold
+            )
+            
+            # Get prediction
+            result = results[0]
+            top1_idx = result.probs.top1
+            predicted_class = result.names[top1_idx].lower()
+            confidence = result.probs.top1conf.item()
+            
+            # Map YOLO class to categories (adjust based on your model's classes)
+            if predicted_class in ['map', 'site_map', 'boring_map', 'location_map']:
+                images['map'].append(image_path)
+            elif predicted_class in ['table', 'drill_log', 'boring_log', 'data_table']:
+                images['table'].append(image_path)
+            else:
+                images['neither'].append(image_path)
+                
+        except Exception as e:
+            print(f"Error classifying {image_path}: {e}")
+            images['neither'].append(image_path)
+        
+        # Update progress if callback provided
+        if progress_callback:
+            progress = (i + 1) / total_images
+            progress_callback.progress(int(progress * 100))
+    
+    return images

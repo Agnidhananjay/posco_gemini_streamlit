@@ -108,6 +108,58 @@ def reset_session_state():
     st.session_state.processing_complete = False
     st.session_state.last_file_hash = None
 
+def clean_text(text):
+    """Remove strikethrough and clean text for display"""
+    if not text or text == 'N/A':
+        return text
+    
+    import re
+    
+    # Convert to string if not already
+    text = str(text)
+    
+    # Remove HTML strikethrough tags
+    text = re.sub(r'<strike>.*?</strike>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<s>.*?</s>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<del>.*?</del>', '', text, flags=re.IGNORECASE)
+    
+    # Remove markdown strikethrough (~~text~~)
+    text = re.sub(r'~~.*?~~', '', text)
+    
+    # Remove Unicode strikethrough characters and combining characters
+    # This includes various Unicode combining characters for strikethrough
+    text = re.sub(r'[\u0336\u0337\u0338]+', '', text)
+    
+    # Remove any character followed by combining strikethrough
+    text = re.sub(r'.[\u0336]', '', text)
+    
+    # Alternative approach: rebuild string without strikethrough
+    cleaned_chars = []
+    skip_next = False
+    for i, char in enumerate(text):
+        if skip_next:
+            skip_next = False
+            continue
+        # Check if next character is a combining strikethrough
+        if i + 1 < len(text) and ord(text[i + 1]) in [0x0336, 0x0337, 0x0338]:
+            skip_next = True
+            continue
+        # Skip combining characters themselves
+        if ord(char) not in [0x0336, 0x0337, 0x0338]:
+            cleaned_chars.append(char)
+    
+    text = ''.join(cleaned_chars)
+    
+    # Clean up extra spaces and newlines
+    text = ' '.join(text.split())
+    
+    # IMPORTANT: Escape single tildes to prevent Streamlit from interpreting them as strikethrough
+    # Replace single ~ with \~ but keep ~~ for ranges
+    # This regex looks for ~ that is not followed or preceded by another ~
+    text = re.sub(r'(?<!~)~(?!~)', r'\\~', text)
+    
+    return text.strip()
+
 def get_api_key():
     """Get API key from environment or Streamlit secrets"""
     # Try Streamlit secrets first (for cloud deployment)
@@ -386,9 +438,9 @@ def main():
                             col1, col2 = st.columns([3, 1])
                             
                             with col1:
-                                st.write("**Observation:**", layer.get('observation', 'N/A'))
-                                st.write("**Soil Name:**", layer.get('soil_name', 'N/A'))
-                                st.write("**Soi Colour:**",layer.get('soil_color', 'N/A') )
+                                st.write("**Observation:**", clean_text(layer.get('observation', 'N/A')))
+                                st.write("**Soil Name:**", clean_text(layer.get('soil_name', 'N/A')))
+                                st.write("**Soi Colour:**", clean_text(layer.get('soil_color', 'N/A')))
                             with col2:
                                 st.metric("Samples", len(layer.get('sample_test', [])))
                             
