@@ -9,7 +9,7 @@ You are an expert in korean and detecting table data:
 Your are given an image of a borehole drill report, where the top section contain meta data informations like
 PROJECT NAME
 HOLE NO.
-ELEV
+ELEVETION LEVEL
 LOCATION
 GROUND WATER LEVEL
 DATE
@@ -24,9 +24,14 @@ every sample
 Similarly there are 3 more sub columns in column 현장 관찰기록, by name 토질명,색 조 and 관 찰. The 관 찰 contain the Depth range in start like 0.0~5.0m or 8.3~10.0m
 these three columns contain information about soil for a given depth region
 IMPORTANT NOTE:
+COLUMNS ON LEFT SIDE OF THE TABLE ARE ABOUT SOIL LAYERS AND THIER DEPTH, WHILE THE RIGHT SIDE OF THE TABLE IS ABOUT SAMPLE DATA
 ***IN SOIL DATA, the depth_range(range) is given in the form of "0.0~5.0m" or "8.3~10.0m", so you need to extract the start and end depth AND THEY MUST BE CONTINUOUS 
 ,if the first entry is 0.0~5.0m then second entry must start where the first one ended, like 5.0~10.0m or something,it cant be like "0.0~10.0m", "4.0~10.0m"  or "8.0~10.0m" in the JSON
 IN SHORT THERE SHOULD NOT BE A MISSING RANGE IN-BETWEEN***
+***IGNORE strikethrough LINES, BUT DO NOT IGNORE THE TEXT IN BRACKETS, THEY ARE IMPORTANT***
+
+***# TCR and RQD are optional, as it may not be present in all samples, only present in core samples in the column "TCR%" and "RQD%" ONLY ON THE RIGHT SIDE OF THE TABLES. And for those samples Hits is None
+IF TCR PERCENTAGE AND RQD PERCENTAGE COLUMN IS EMPTY, IGNORE THAT SAMPLE***
 Now given an image with this table data your job is to return a json
 
 Please return Json only

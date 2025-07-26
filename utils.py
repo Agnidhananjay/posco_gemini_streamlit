@@ -425,6 +425,8 @@ def process_engineering_images(images, client, prompt_map, prompt_table, borehol
 def merge_engineering_data(table_data, map_data):
     """
     Merge table and map data, then combine samples with soil data based on depth ranges.
+    Handles overlapping soil layers by removing redundant ranges.
+    Merges consecutive layers with same soil name and color.
     
     Args:
         table_data: List of table data from drill logs
@@ -433,6 +435,144 @@ def merge_engineering_data(table_data, map_data):
     Returns:
         dict: Merged data with samples integrated into soil layers by depth
     """
+    
+    def convert_to_float(range_str):
+        """Convert range string like '5.0m' to float"""
+        if range_str.lower() == 'null' or not range_str.strip():
+            return None
+        return float(range_str.replace('m', '').strip())
+    
+    def parse_range(range_str):
+        """Parse range string and return (start, end) tuple"""
+        try:
+            if '~' in range_str:
+                range_start, range_end = map(convert_to_float, range_str.split('~'))
+            else:
+                range_start = range_end = convert_to_float(range_str)
+            return (range_start, range_end)
+        except:
+            return (None, None)
+    
+    def merge_similar_layers(soil_layers):
+        """Merge consecutive soil layers with same name and color"""
+        if not soil_layers:
+            return soil_layers
+        
+        # First, sort layers by depth
+        layers_with_ranges = []
+        for layer in soil_layers:
+            start, end = parse_range(layer.get('range', ''))
+            if start is not None and end is not None:
+                layers_with_ranges.append({
+                    'layer': layer,
+                    'start': start,
+                    'end': end
+                })
+        
+        # Sort by start position
+        layers_with_ranges.sort(key=lambda x: x['start'])
+        
+        # Merge consecutive layers with same properties
+        merged_layers = []
+        i = 0
+        
+        while i < len(layers_with_ranges):
+            current = layers_with_ranges[i]
+            current_layer = current['layer']
+            
+            # Initialize merged layer
+            merged_start = current['start']
+            merged_end = current['end']
+            merged_observations = [current_layer.get('observation', '')]
+            
+            # Look for consecutive layers with same name and color
+            j = i + 1
+            while j < len(layers_with_ranges):
+                next_layer = layers_with_ranges[j]
+                next_layer_data = next_layer['layer']
+                
+                # Check if layers have same soil_name and soil_color
+                same_name = current_layer.get('soil_name', '').strip().lower() == next_layer_data.get('soil_name', '').strip().lower()
+                same_color = current_layer.get('soil_color', '').strip().lower() == next_layer_data.get('soil_color', '').strip().lower()
+                
+                # Check if layers are consecutive (next starts where current ends)
+                is_consecutive = abs(merged_end - next_layer['start']) < 0.1  # Small tolerance for float comparison
+                
+                if same_name and same_color and is_consecutive:
+                    # Merge this layer
+                    merged_end = next_layer['end']
+                    obs = next_layer_data.get('observation', '')
+                    if obs and obs not in merged_observations:
+                        merged_observations.append(obs)
+                    j += 1
+                else:
+                    break
+            
+            # Create merged layer
+            merged_layer = current_layer.copy()
+            merged_layer['range'] = f"{merged_start}~{merged_end}m"
+            
+            # Combine observations
+            filtered_observations = [obs for obs in merged_observations if obs]
+            merged_layer['observation'] = "; ".join(filtered_observations) if filtered_observations else ""
+            
+            merged_layers.append(merged_layer)
+            i = j
+        
+        return merged_layers
+    
+    def remove_overlapping_layers(soil_layers):
+        """Remove soil layers that are completely contained within other layers"""
+        if not soil_layers:
+            return soil_layers
+        
+        # Parse all ranges
+        layers_with_ranges = []
+        for layer in soil_layers:
+            start, end = parse_range(layer.get('range', ''))
+            if start is not None and end is not None:
+                layers_with_ranges.append({
+                    'layer': layer,
+                    'start': start,
+                    'end': end,
+                    'range_size': end - start
+                })
+        
+        # Sort by range size (larger ranges first) and then by start position
+        layers_with_ranges.sort(key=lambda x: (-x['range_size'], x['start']))
+        
+        # Keep track of non-overlapping layers
+        filtered_layers = []
+        
+        for i, current in enumerate(layers_with_ranges):
+            is_contained = False
+            
+            # Check if current layer is contained within any previously accepted layer
+            for accepted in filtered_layers:
+                # Check if current layer is completely contained within accepted layer
+                if (current['start'] >= accepted['start'] and 
+                    current['end'] <= accepted['end'] and
+                    current != accepted):  # Don't compare with itself
+                    is_contained = True
+                    break
+            
+            # If not contained in any accepted layer, keep it
+            if not is_contained:
+                filtered_layers.append(current)
+        
+        # Sort filtered layers by start position for consistent ordering
+        filtered_layers.sort(key=lambda x: x['start'])
+        
+        # Return only the layer data
+        return [item['layer'] for item in filtered_layers]
+    
+    # Fix overlapping layers and merge similar layers in table_data before processing
+    for table_entry in table_data:
+        if 'soil_data' in table_entry:
+            # First merge similar consecutive layers
+            table_entry['soil_data'] = merge_similar_layers(table_entry['soil_data'])
+            # Then remove overlapping layers
+            table_entry['soil_data'] = remove_overlapping_layers(table_entry['soil_data'])
     
     # Step 1: Create initial merged structure
     data_extracted = {}
@@ -445,9 +585,9 @@ def merge_engineering_data(table_data, map_data):
                     b['map_data'] = {
                         'Name': a['Name'],
                         'Number': a['Number'],
-                        'Excavation_level': a['Excavation_level']
+                        'Elevation_level': a['Elevation_level']
                     }
-                    data_extracted[a['Name']] = b  # <-- move this inside
+                    data_extracted[a['Name']] = b
     else:
         for b in table_data:
             data_extracted[b["metadata"]['HOLE_NO']] = b
@@ -455,30 +595,21 @@ def merge_engineering_data(table_data, map_data):
     # Step 2: Merge samples with soil data based on depth ranges
     merged_data = {}
 
-    def convert_to_float(range_str):
-        """Convert range string like '5.0m' to float"""
-        if range_str.lower() == 'null' or not range_str.strip():
-            return None
-        return float(range_str.replace('m', '').strip())
-
     # Iterate over all boreholes in the data
     for bh_id, bh_data in data_extracted.items():
         merged_soil_data = []
 
         # Add metadata for each borehole
         borehole_metadata = bh_data.get('metadata', {})
+        Elevation_level = borehole_metadata.get('Elevation_level', None)
         borehole_mapdata = bh_data.get('map_data', {})
 
         # Iterate over soil layers
         for soil_layer in bh_data['soil_data']:
             range_str = soil_layer['range']
             try:
-                # Ensure that the range string contains '~' to split
-                if '~' in range_str:
-                    range_start, range_end = map(convert_to_float, range_str.split('~'))
-                else:
-                    # If no '~' is found, treat as single depth value
-                    range_start = range_end = convert_to_float(range_str)
+                # Parse the range
+                range_start, range_end = parse_range(range_str)
 
                 # If either range_start or range_end is None, skip this soil layer
                 if range_start is None or range_end is None:
@@ -489,15 +620,19 @@ def merge_engineering_data(table_data, map_data):
 
                 # Iterate over sample data and check if depth falls within the range
                 for sample in bh_data['sample_data']:
-                    if range_start <= sample['Depth'] <= range_end:
+                    if sample["Hits"] in [None, 'Null', '']:
+                        sample["Hits"] = "None"  # Ensure Hits is not None
+                    sample["Elevation_level"] = Elevation_level - sample['Depth'] if Elevation_level else None
+                    if range_start < sample['Depth'] <= range_end:
                         sample_data_within_range.append(sample)
 
                 # Add samples to soil layer (even if empty list)
                 soil_layer['sample_test'] = sample_data_within_range
                 merged_soil_data.append(soil_layer)
                 
-            except Exception:
+            except Exception as e:
                 # Skip problematic soil layers
+                print(f"Error processing soil layer: {e}")
                 continue
 
         # Save the merged data for this borehole, including metadata

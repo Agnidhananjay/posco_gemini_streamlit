@@ -40,7 +40,7 @@ st.set_page_config(
 # Default configuration
 DEFAULT_CONFIG = {
     "max_workers": 4,
-    "fixed_width": 3000,
+    "fixed_width":4000,
     "max_concurrent": 6
 }
 
@@ -277,6 +277,7 @@ def main():
                             start_time = time.time()
                             final_data = merge_engineering_data(table_data, map_data)
                             st.session_state.processed_data = final_data
+                            st.session_state.map_data= map_data
                             st.session_state.processing_complete = True
                             
                             progress_4.progress(100)
@@ -314,6 +315,7 @@ def main():
             
             final_data = st.session_state.processed_data
             
+            
             # Create tabs for different views
             tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary", "🔍 Detailed View", "🗺️ Map Data", "💾 Export"])
             
@@ -346,7 +348,7 @@ def main():
                         "Soil Layers": len(bh_data.get('soil_data', [])),
                         "Total Samples": sum(len(layer.get('sample_test', [])) 
                                            for layer in bh_data.get('soil_data', [])),
-                        "Has Map Data": "✅" if 'map_data' in bh_data else "❌"
+                        "Has Map Data": "✅" if  len(bh_data['map_data'])>0 else "❌"
                     })
                 
                 st.dataframe(
@@ -406,7 +408,7 @@ def main():
                         st.json(final_data[first_key])
                 
                 # Check if any borehole has map data
-                boreholes_with_maps = [bh_id for bh_id, bh_data in final_data.items() if 'map_data' in bh_data]
+                boreholes_with_maps = [bh_id for bh_id, bh_data in final_data.items() if  len(bh_data['map_data'])>0]
                 
                 st.write(f"Total boreholes with map data: {len(boreholes_with_maps)}")
                 
@@ -420,7 +422,7 @@ def main():
                                 "Borehole ID": bh_id,
                                 "Name": map_info.get('Name', 'N/A'),
                                 "Number": map_info.get('Number', 'N/A'),
-                                "Excavation level": map_info.get('Excavation_level', 'N/A'),
+                                "Elevation level": map_info.get('Elevation_level', 'N/A'),
                             })
                     
                     # Display map data table
@@ -446,7 +448,7 @@ def main():
                         with col1:
                             st.write("**Borehole Name:**", map_data.get('Name', 'N/A'))
                             st.write("**Borehole Number:**", map_data.get('Number', 'N/A'))
-                            st.write("**Excavation level**", map_data.get('Excavation_level', 'N/A'))
+                            st.write("**Excavation level**", map_data.get('Elevation_level', 'N/A'))
                         
                         # Show full map data JSON
                         with st.expander("View Complete Map Data JSON"):
