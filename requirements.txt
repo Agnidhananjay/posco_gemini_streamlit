@@ -9,7 +9,6 @@ PyMuPDF>=1.23.0
 opencv-python
 # Google Generative AI
 google-genai
-ultralytics
 # Environment variables
 python-dotenv>=1.0.0
 
