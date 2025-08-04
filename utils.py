@@ -692,64 +692,64 @@ def merge_engineering_data(table_data, map_data):
 #     for soil_layer in data['soil_data']:
 #         print(f"Soil range: {soil_layer['range']}")
 #         print(f"Samples in range: {len(soil_layer['sample_test'])}")
-from ultralytics import YOLO
+# from ultralytics import YOLO
 
-def classify_images_yolo(file_paths, model_path, progress_callback=None):
-    """
-    Classify images using YOLO model optimized for Streamlit Cloud.
-    Processes one image at a time with 1080px size.
+# def classify_images_yolo(file_paths, model_path, progress_callback=None):
+#     """
+#     Classify images using YOLO model optimized for Streamlit Cloud.
+#     Processes one image at a time with 1080px size.
     
-    Args:
-        file_paths: List of file paths to images
-        model_path: Path to trained YOLO model (.pt file)
-        progress_callback: Optional Streamlit progress bar object
+#     Args:
+#         file_paths: List of file paths to images
+#         model_path: Path to trained YOLO model (.pt file)
+#         progress_callback: Optional Streamlit progress bar object
         
-    Returns:
-        dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
-    """
+#     Returns:
+#         dict: Dictionary with 'map', 'table', and 'neither' keys containing lists of file paths
+#     """
     
-    # Load model once
-    model = YOLO(model_path)
-    model.to('cpu')
+#     # Load model once
+#     model = YOLO(model_path)
+#     model.to('cpu')
     
-    # Initialize results dictionary
-    images = {"map": [], "table": [], "neither": []}
-    total_images = len(file_paths)
+#     # Initialize results dictionary
+#     images = {"map": [], "table": [], "neither": []}
+#     total_images = len(file_paths)
     
-    # Process images one by one
-    for i, image_path in enumerate(file_paths):
-        try:
-            # Run prediction on single image
-            results = model(
-                image_path,
-                imgsz=1080,        # Image size as requested
-                device='cpu',      # Force CPU for Streamlit Cloud
-                verbose=False,     # Reduce console output
-                max_det=1,         # Only need top detection
-                conf=0.25          # Confidence threshold
-            )
+#     # Process images one by one
+#     for i, image_path in enumerate(file_paths):
+#         try:
+#             # Run prediction on single image
+#             results = model(
+#                 image_path,
+#                 imgsz=1080,        # Image size as requested
+#                 device='cpu',      # Force CPU for Streamlit Cloud
+#                 verbose=False,     # Reduce console output
+#                 max_det=1,         # Only need top detection
+#                 conf=0.25          # Confidence threshold
+#             )
             
-            # Get prediction
-            result = results[0]
-            top1_idx = result.probs.top1
-            predicted_class = result.names[top1_idx].lower()
-            confidence = result.probs.top1conf.item()
+#             # Get prediction
+#             result = results[0]
+#             top1_idx = result.probs.top1
+#             predicted_class = result.names[top1_idx].lower()
+#             confidence = result.probs.top1conf.item()
             
-            # Map YOLO class to categories (adjust based on your model's classes)
-            if predicted_class in ['map', 'site_map', 'boring_map', 'location_map']:
-                images['map'].append(image_path)
-            elif predicted_class in ['table', 'drill_log', 'boring_log', 'data_table']:
-                images['table'].append(image_path)
-            else:
-                images['neither'].append(image_path)
+#             # Map YOLO class to categories (adjust based on your model's classes)
+#             if predicted_class in ['map', 'site_map', 'boring_map', 'location_map']:
+#                 images['map'].append(image_path)
+#             elif predicted_class in ['table', 'drill_log', 'boring_log', 'data_table']:
+#                 images['table'].append(image_path)
+#             else:
+#                 images['neither'].append(image_path)
                 
-        except Exception as e:
-            print(f"Error classifying {image_path}: {e}")
-            images['neither'].append(image_path)
+#         except Exception as e:
+#             print(f"Error classifying {image_path}: {e}")
+#             images['neither'].append(image_path)
         
-        # Update progress if callback provided
-        if progress_callback:
-            progress = (i + 1) / total_images
-            progress_callback.progress(int(progress * 100))
+#         # Update progress if callback provided
+#         if progress_callback:
+#             progress = (i + 1) / total_images
+#             progress_callback.progress(int(progress * 100))
     
-    return images
+#     return images
