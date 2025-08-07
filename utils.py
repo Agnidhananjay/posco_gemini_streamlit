@@ -753,3 +753,42 @@ def merge_engineering_data(table_data, map_data):
 #             progress_callback.progress(int(progress * 100))
     
 #     return images
+def calculate_thickness(range_str):
+    """
+    Calculate thickness from a range string.
+    Expected formats:
+    - "0.0 - 2.5"
+    - "2.5 - 5.0"
+    - "0.0-2.5" (without spaces)
+    - "2.5-5.0" 
+    """
+    if not range_str or range_str == 'N/A' or range_str == 'Unknown':
+        return 'N/A'
+    
+    try:
+        # Clean the string and split by dash
+        range_clean = str(range_str).replace(' ', '')
+        
+        # Try different splitting patterns
+        if '-' in range_clean:
+            parts = range_clean.split('-')
+            if len(parts) == 2:
+                start = float(parts[0])
+                end = float(parts[1])
+                thickness = abs(end - start)
+                return f"{thickness:.1f}"
+        
+        # If splitting by dash doesn't work, try other patterns
+        # Handle formats like "from 0.0 to 2.5"
+        import re
+        numbers = re.findall(r'\d+\.?\d*', range_str)
+        if len(numbers) >= 2:
+            start = float(numbers[0])
+            end = float(numbers[1])
+            thickness = abs(end - start)
+            return f"{thickness:.1f}"
+        
+        return 'N/A'
+    
+    except (ValueError, IndexError, AttributeError):
+        return 'N/A'

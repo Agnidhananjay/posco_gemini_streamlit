@@ -12,7 +12,8 @@ from utils import (
     pdf_to_images_2,
     classify_images,
     process_engineering_images,
-    merge_engineering_data
+    merge_engineering_data,
+    calculate_thickness
 )
 from prompts import (
     CLASSIFICATION_PROMPT,
@@ -439,6 +440,9 @@ def main():
                                 st.write("**Observation:**", clean_text(layer.get('observation', 'N/A')))
                                 st.write("**Soil Name:**", layer.get('soil_name', 'N/A'))
                                 st.write("**Soi Colour:**",layer.get('soil_color', 'N/A') )
+                                range_value = layer.get('range', 'N/A')
+                                thickness = calculate_thickness(range_value)
+                                st.write("**Thickness by El:**", f"{thickness} m" if thickness != 'N/A' else 'N/A')
                             with col2:
                                 st.metric("Samples", len(layer.get('sample_test', [])))
                             
